@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roster Tracker census</title>
+<meta name="description" content="Class and race distributions across Alliance and Horde, PvE and PvP realms, from Roster Tracker scans.">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #131a26;
+    --rule: #2a3548;
+    --text: #e8ebf1;
+    --muted: #97a3b8;
+    --alliance: #5b8fd9;
+    --alliance-deep: #41659a;
+    --horde: #d2553f;
+    --horde-deep: #97392c;
+    --good: #7bd88f;
+    --bad: #ef8a7a;
+    --serif: "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 var(--sans); font-variant-numeric: tabular-nums;
+  }
+  .page { max-width: 1040px; margin: 0 auto; padding: 56px 24px 96px; }
+  h1, h2 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  h1 { font-size: clamp(2.1rem, 5vw, 3rem); line-height: 1.1; }
+  h2 { font-size: 1.6rem; line-height: 1.2; }
+  h3 { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; margin: 0 0 8px; }
+  p { margin: 0; max-width: 62ch; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-top: 14px; }
+  .muted { color: var(--muted); }
+  section { border-top: 1px solid var(--rule); margin-top: 72px; padding-top: 36px; }
+  section > p { margin-top: 10px; }
+  .takeaway { color: var(--text); }
+  .note { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
+
+  :focus-visible { outline: 2px solid #9db8e8; outline-offset: 2px; }
+
+  /* Hero: the four groups, sized by population */
+  .census { display: flex; gap: 3px; margin-top: 36px; }
+  .seg { padding: 14px 14px 16px; min-width: 0; border-radius: 2px; cursor: default; }
+  .seg strong { display: block; font-size: 0.98rem; font-weight: 650; }
+  .seg span { display: block; font-size: 0.86rem; margin-top: 2px; opacity: 0.92; }
+  .seg.light { color: #0d1420; }
+  .seg.deep { color: #fff; }
+
+  /* Chart plumbing */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 22px 0 6px; font-size: 0.92rem; }
+  .legend .item { display: inline-flex; align-items: center; gap: 8px; }
+  .swatch { width: 14px; height: 14px; display: inline-block; border-radius: 2px; flex: none; }
+  button.item {
+    background: none; border: 0; padding: 4px 6px; margin: -4px -6px; color: var(--text);
+    font: inherit; cursor: pointer; border-radius: 3px;
+  }
+  button.item:hover { background: #1c2536; }
+  .chart-wrap { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+  svg.chart { display: block; width: 100%; min-width: 820px; height: auto; }
+  svg.chart .grid { stroke: var(--rule); stroke-width: 1; }
+  svg.chart .base { stroke: #3b4860; stroke-width: 1; }
+  svg.chart text { fill: var(--muted); font-size: 12px; font-family: var(--sans); }
+  svg.chart text.val { fill: var(--text); font-size: 10.5px; }
+  svg.chart text.cat { fill: var(--text); font-size: 13.5px; }
+  svg.chart rect.bar:hover { filter: brightness(1.18); }
+  svg.chart .dim { opacity: 0.2; }
+
+  #tip {
+    position: fixed; z-index: 10; pointer-events: none; padding: 8px 11px; border-radius: 4px;
+    background: #0c111a; border: 1px solid #3b4860; font-size: 0.85rem; line-height: 1.4; max-width: 260px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  }
+  #tip[hidden] { display: none; }
+  #tip strong { display: block; }
+
+  /* Tables */
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; width: fit-content; }
+  summary:hover { color: var(--text); }
+  .table-scroll { overflow-x: auto; margin-top: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; color: var(--muted); font-size: 0.86rem; }
+  td.cls .swatch { margin-right: 9px; vertical-align: -2px; }
+  td.max { font-weight: 700; }
+  td.up { color: var(--good); font-weight: 600; }
+  td.down { color: var(--bad); }
+  .ratio-grid th, .ratio-grid td { padding-left: 8px; padding-right: 8px; }
+  .ratio-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 36px 40px; margin-top: 26px; }
+  @media (max-width: 760px) {
+    .ratio-grid { grid-template-columns: minmax(0, 1fr); }
+    .census { flex-direction: column; }
+    .census .seg { flex: none !important; }
+  }
+  footer { margin-top: 72px; border-top: 1px solid var(--rule); padding-top: 22px; color: var(--muted); font-size: 0.88rem; }
+  footer p { max-width: 70ch; }
+  footer p + p { margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Roster Tracker census</h1>
+    <p class="lede" id="lede"></p>
+    <div class="census" id="census" role="group" aria-label="Population of the four faction and realm-type groups"></div>
+    <p class="note">Every chart below shows shares within a group, never of the whole sample. Hover or tap a bar for exact counts.</p>
+  </header>
+
+  <section aria-labelledby="h-realm">
+    <h2 id="h-realm">Alliance classes on PvE and PvP realms</h2>
+    <p class="takeaway" id="realm-take"></p>
+    <p class="note">Classes run from the most PvE-leaning on the left to the most PvP-leaning on the right.</p>
+    <div class="legend" id="realm-legend"></div>
+    <div class="chart-wrap"><div id="realm-chart"></div></div>
+    <div id="realm-table"></div>
+  </section>
+
+  <section aria-labelledby="h-avh">
+    <h2 id="h-avh">Alliance and Horde classes on PvE realms</h2>
+    <p class="takeaway" id="avh-take"></p>
+    <p class="note">Classes run from the most Alliance-leaning on the left to the most Horde-leaning on the right.</p>
+    <div class="legend" id="avh-legend"></div>
+    <div class="chart-wrap"><div id="avh-chart"></div></div>
+    <div id="avh-table"></div>
+  </section>
+
+  <section aria-labelledby="h-ally">
+    <h2 id="h-ally">Race and class in the Alliance</h2>
+    <p class="takeaway" id="ally-take"></p>
+    <p class="note">Each bar is one race-class pairing as a share of all Alliance characters. A class missing from a race has no characters in the data. Point at a class in the key to pick it out.</p>
+    <div class="legend" id="ally-legend"></div>
+    <div class="chart-wrap"><div id="ally-chart"></div></div>
+    <div id="ally-table"></div>
+  </section>
+
+  <section aria-labelledby="h-horde">
+    <h2 id="h-horde">Race and class in the Horde</h2>
+    <p class="takeaway" id="horde-take"></p>
+    <p class="note">Same reading as above, as a share of all Horde characters.</p>
+    <div class="legend" id="horde-legend"></div>
+    <div class="chart-wrap"><div id="horde-chart"></div></div>
+    <div id="horde-table"></div>
+  </section>
+
+  <section aria-labelledby="h-groups">
+    <h2 id="h-groups">Class share by group</h2>
+    <p>Each column adds up to 100% of that group. The largest class in each column is in bold.</p>
+    <div class="table-scroll" id="group-table"></div>
+  </section>
+
+  <section aria-labelledby="h-ratio">
+    <h2 id="h-ratio">What sets each group apart</h2>
+    <p>The ratio divides a class's share in one group by its average share across the other three. Above 1.00x, the class is over-represented in that group.</p>
+    <div class="ratio-grid" id="ratio-grid"></div>
+  </section>
+
+  <footer>
+    <p id="foot-method"></p>
+    <p id="foot-gen"></p>
+  </footer>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const DATA = {"total_entries":18528,"no_level":2325,"low_level":660,"kept":15543,"realms":["Classic Beta PvE","Classic Beta PvE 2","Classic Beta PvP 2"],"generated":"2026-09-28","groups":{"Alliance-PvE":{"pct":{"WARRIOR":11.043270507034777,"PALADIN":14.016458720467215,"HUNTER":17.4940270772498,"ROGUE":6.663127156888771,"PRIEST":9.264666843642155,"SHAMAN":8.574462436952482,"MAGE":12.503318290416775,"WARLOCK":7.140960976904699,"DRUID":13.299707990443324},"count":{"WARRIOR":416,"PALADIN":528,"HUNTER":659,"ROGUE":251,"PRIEST":349,"SHAMAN":323,"MAGE":471,"WARLOCK":269,"DRUID":501},"n":3767},"Alliance-PvP":{"pct":{"WARRIOR":11.867139632376652,"PALADIN":13.060303128023218,"HUNTER":17.542728152208966,"ROGUE":10.480490164463076,"PRIEST":9.416317316994519,"SHAMAN":7.64269590454692,"MAGE":10.19026120606256,"WARLOCK":8.061915511125443,"DRUID":11.738148984198645},"count":{"WARRIOR":368,"PALADIN":405,"HUNTER":544,"ROGUE":325,"PRIEST":292,"SHAMAN":237,"MAGE":316,"WARLOCK":250,"DRUID":364},"n":3101},"Horde-PvE":{"pct":{"WARRIOR":9.52471482889734,"PALADIN":17.24334600760456,"HUNTER":12.737642585551331,"ROGUE":5.475285171102662,"PRIEST":8.764258555133079,"SHAMAN":14.638783269961978,"MAGE":6.577946768060837,"WARLOCK":10.836501901140684,"DRUID":14.201520912547528},"count":{"WARRIOR":501,"PALADIN":907,"HUNTER":670,"ROGUE":288,"PRIEST":461,"SHAMAN":770,"MAGE":346,"WARLOCK":570,"DRUID":747},"n":5260},"Horde-PvP":{"pct":{"WARRIOR":9.25329428989751,"PALADIN":17.306002928257687,"HUNTER":12.94289897510981,"ROGUE":10.307467057101025,"PRIEST":9.51683748169839,"SHAMAN":11.537335285505126,"MAGE":7.408491947291361,"WARLOCK":10.512445095168376,"DRUID":11.215226939970718},"count":{"WARRIOR":316,"PALADIN":591,"HUNTER":442,"ROGUE":352,"PRIEST":325,"SHAMAN":394,"MAGE":253,"WARLOCK":359,"DRUID":383},"n":3415}},"ratios":{"Alliance-PvE":{"WARRIOR":{"here":11.043270507034777,"avg":10.215049583723834,"ratio":1.0810785025097274},"PALADIN":{"here":14.016458720467215,"avg":15.869884021295155,"ratio":0.8832111628326392},"HUNTER":{"here":17.4940270772498,"avg":14.407756570956701,"ratio":1.2142089568971781},"ROGUE":{"here":6.663127156888771,"avg":8.75441413088892,"ratio":0.7611162845699417},"PRIEST":{"here":9.264666843642155,"avg":9.232471117941996,"ratio":1.0034872273402071},"SHAMAN":{"here":8.574462436952482,"avg":11.272938153338009,"ratio":0.7606235677265304},"MAGE":{"here":12.503318290416775,"avg":8.05889997380492,"ratio":1.5514919320326883},"WARLOCK":{"here":7.140960976904699,"avg":9.8036208358115,"ratio":0.7284003631412986},"DRUID":{"here":13.299707990443324,"avg":12.384965612238963,"ratio":1.0738590971379365}},"Alliance-PvP":{"WARRIOR":{"here":11.867139632376652,"avg":9.940426541943209,"ratio":1.1938259975368017},"PALADIN":{"here":13.060303128023218,"avg":16.18860255210982,"ratio":0.806759143414828},"HUNTER":{"here":17.542728152208966,"avg":14.391522879303645,"ratio":1.2189626003678213},"ROGUE":{"here":10.480490164463076,"avg":7.481959795030819,"ratio":1.4007680409381171},"PRIEST":{"here":9.416317316994519,"avg":9.181920960157875,"ratio":1.0255280303385026},"SHAMAN":{"here":7.64269590454692,"avg":11.583526997473195,"ratio":0.6597900541185842},"MAGE":{"here":10.19026120606256,"avg":8.82991900192299,"ratio":1.1540605529726051},"WARLOCK":{"here":8.061915511125443,"avg":9.496635991071253,"ratio":0.848923294386061},"DRUID":{"here":11.738148984198645,"avg":12.905485280987188,"ratio":0.9095472761099265}},"Horde-PvE":{"WARRIOR":{"here":9.52471482889734,"avg":10.721234809769646,"ratio":0.8883971853893186},"PALADIN":{"here":17.24334600760456,"avg":14.794254925582706,"ratio":1.16554338791248},"HUNTER":{"here":12.737642585551331,"avg":15.993218068189526,"ratio":0.7964402493133307},"ROGUE":{"here":5.475285171102662,"avg":9.15036145948429,"ratio":0.5983681841800429},"PRIEST":{"here":8.764258555133079,"avg":9.399273880778354,"ratio":0.9324399593309127},"SHAMAN":{"here":14.638783269961978,"avg":9.251497875668177,"ratio":1.5823149360994382},"MAGE":{"here":6.577946768060837,"avg":10.034023814590233,"ratio":0.6555641973358687},"WARLOCK":{"here":10.836501901140684,"avg":8.571773861066172,"ratio":1.264207628057143},"DRUID":{"here":14.201520912547528,"avg":12.084361304870896,"ratio":1.1751983041770904}},"Horde-PvP":{"WARRIOR":{"here":9.25329428989751,"avg":10.81170832276959,"ratio":0.8558586685519401},"PALADIN":{"here":17.306002928257687,"avg":14.773369285364998,"ratio":1.1714323654930634},"HUNTER":{"here":12.94289897510981,"avg":15.924799271670032,"ratio":0.8127511533621038},"ROGUE":{"here":10.307467057101025,"avg":7.5396341641515034,"ratio":1.3671044022413796},"PRIEST":{"here":9.51683748169839,"avg":9.148414238589917,"ratio":1.0402718147101808},"SHAMAN":{"here":11.537335285505126,"avg":10.285313870487126,"ratio":1.1217290430592082},"MAGE":{"here":7.408491947291361,"avg":9.75717542151339,"ratio":0.7592865380852468},"WARLOCK":{"here":10.512445095168376,"avg":8.679792796390275,"ratio":1.2111400976691815},"DRUID":{"here":11.215226939970718,"avg":13.079792629063165,"ratio":0.8574468462940764}}},"realm_vis":{"pve":{"pct":{"WARRIOR":11.043270507034777,"PALADIN":14.016458720467215,"HUNTER":17.4940270772498,"ROGUE":6.663127156888771,"PRIEST":9.264666843642155,"SHAMAN":8.574462436952482,"MAGE":12.503318290416775,"WARLOCK":7.140960976904699,"DRUID":13.299707990443324},"count":{"WARRIOR":416,"PALADIN":528,"HUNTER":659,"ROGUE":251,"PRIEST":349,"SHAMAN":323,"MAGE":471,"WARLOCK":269,"DRUID":501},"n":3767},"pvp":{"pct":{"WARRIOR":11.867139632376652,"PALADIN":13.060303128023218,"HUNTER":17.542728152208966,"ROGUE":10.480490164463076,"PRIEST":9.416317316994519,"SHAMAN":7.64269590454692,"MAGE":10.19026120606256,"WARLOCK":8.061915511125443,"DRUID":11.738148984198645},"count":{"WARRIOR":368,"PALADIN":405,"HUNTER":544,"ROGUE":325,"PRIEST":292,"SHAMAN":237,"MAGE":316,"WARLOCK":250,"DRUID":364},"n":3101}},"avh_vis":{"alliance":{"pct":{"WARRIOR":11.043270507034777,"PALADIN":14.016458720467215,"HUNTER":17.4940270772498,"ROGUE":6.663127156888771,"PRIEST":9.264666843642155,"SHAMAN":8.574462436952482,"MAGE":12.503318290416775,"WARLOCK":7.140960976904699,"DRUID":13.299707990443324},"count":{"WARRIOR":416,"PALADIN":528,"HUNTER":659,"ROGUE":251,"PRIEST":349,"SHAMAN":323,"MAGE":471,"WARLOCK":269,"DRUID":501},"n":3767},"horde":{"pct":{"WARRIOR":9.52471482889734,"PALADIN":17.24334600760456,"HUNTER":12.737642585551331,"ROGUE":5.475285171102662,"PRIEST":8.764258555133079,"SHAMAN":14.638783269961978,"MAGE":6.577946768060837,"WARLOCK":10.836501901140684,"DRUID":14.201520912547528},"count":{"WARRIOR":501,"PALADIN":907,"HUNTER":670,"ROGUE":288,"PRIEST":461,"SHAMAN":770,"MAGE":346,"WARLOCK":570,"DRUID":747},"n":5260}},"clusters":{"Alliance":{"n":6868,"races":{"Human":{"WARRIOR":{"pct":5.430984274898078,"count":373},"PALADIN":{"pct":10.716365754222481,"count":736},"HUNTER":{"pct":5.358182877111241,"count":368},"ROGUE":{"pct":2.44612696563774,"count":168},"PRIEST":{"pct":2.7518928363424577,"count":189},"SHAMAN":{"pct":0.0,"count":0},"MAGE":{"pct":2.285963890506698,"count":157},"WARLOCK":{"pct":3.8730343622597556,"count":266},"DRUID":{"pct":0.0,"count":0}},"Dwarf":{"WARRIOR":{"pct":0.9318578916715201,"count":64},"PALADIN":{"pct":2.8683750728013977,"count":197},"HUNTER":{"pct":2.56260920209668,"count":176},"ROGUE":{"pct":0.29120559114735,"count":20},"PRIEST":{"pct":0.5824111822947,"count":40},"SHAMAN":{"pct":8.1537565521258,"count":560},"MAGE":{"pct":0.0,"count":0},"WARLOCK":{"pct":0.0,"count":0},"DRUID":{"pct":0.0,"count":0}},"Gnome":{"WARRIOR":{"pct":1.4123471170646476,"count":97},"PALADIN":{"pct":0.0,"count":0},"HUNTER":{"pct":0.0,"count":0},"ROGUE":{"pct":1.9365171811298778,"count":133},"PRIEST":{"pct":4.135119394292371,"count":284},"SHAMAN":{"pct":0.0,"count":0},"MAGE":{"pct":4.120559114735003,"count":283},"WARLOCK":{"pct":3.683750728013978,"count":253},"DRUID":{"pct":0.0,"count":0}},"Night Elf":{"WARRIOR":{"pct":1.8200349446709376,"count":125},"PALADIN":{"pct":0.0,"count":0},"HUNTER":{"pct":5.3873034362259755,"count":370},"ROGUE":{"pct":1.9073966220151426,"count":131},"PRIEST":{"pct":1.8637157833430402,"count":128},"SHAMAN":{"pct":0.0,"count":0},"MAGE":{"pct":0.0,"count":0},"WARLOCK":{"pct":0.0,"count":0},"DRUID":{"pct":5.41642399534071,"count":372}},"High Order Skyborne":{"WARRIOR":{"pct":1.8200349446709376,"count":125},"PALADIN":{"pct":0.0,"count":0},"HUNTER":{"pct":4.207920792079208,"count":289},"ROGUE":{"pct":1.80547466511357,"count":124},"PRIEST":{"pct":0.0,"count":0},"SHAMAN":{"pct":0.0,"count":0},"MAGE":{"pct":5.0524170064065235,"count":347},"WARLOCK":{"pct":0.0,"count":0},"DRUID":{"pct":7.1782178217821775,"count":493}}}},"Horde":{"n":8675,"races":{"Orc":{"WARRIOR":{"pct":3.043227665706052,"count":264},"PALADIN":{"pct":0.0,"count":0},"HUNTER":{"pct":3.2737752161383282,"count":284},"ROGUE":{"pct":1.0144092219020173,"count":88},"PRIEST":{"pct":0.0,"count":0},"SHAMAN":{"pct":4.587896253602305,"count":398},"MAGE":{"pct":1.6138328530259365,"count":140},"WARLOCK":{"pct":2.109510086455331,"count":183},"DRUID":{"pct":0.0,"count":0}},"Undead":{"WARRIOR":{"pct":1.302593659942363,"count":113},"PALADIN":{"pct":17.26801152737752,"count":1498},"HUNTER":{"pct":0.0,"count":0},"ROGUE":{"pct":3.884726224783862,"count":337},"PRIEST":{"pct":7.020172910662824,"count":609},"SHAMAN":{"pct":0.0,"count":0},"MAGE":{"pct":3.5734870317002883,"count":310},"WARLOCK":{"pct":5.729106628242075,"count":497},"DRUID":{"pct":0.0,"count":0}},"Troll":{"WARRIOR":{"pct":0.5763688760806917,"count":50},"PALADIN":{"pct":0.0,"count":0},"HUNTER":{"pct":2.386167146974063,"count":207},"ROGUE":{"pct":0.6109510086455331,"count":53},"PRIEST":{"pct":2.0403458213256487,"count":177},"SHAMAN":{"pct":1.2795389048991355,"count":111},"MAGE":{"pct":1.717579250720461,"count":149},"WARLOCK":{"pct":2.8703170028818445,"count":249},"DRUID":{"pct":0.0,"count":0}},"Tauren":{"WARRIOR":{"pct":2.9164265129683,"count":253},"PALADIN":{"pct":0.0,"count":0},"HUNTER":{"pct":2.4438040345821324,"count":212},"ROGUE":{"pct":0.0,"count":0},"PRIEST":{"pct":0.0,"count":0},"SHAMAN":{"pct":2.3746397694524495,"count":206},"MAGE":{"pct":0.0,"count":0},"WARLOCK":{"pct":0.0,"count":0},"DRUID":{"pct":6.017291066282421,"count":522}},"Windshaper Skyborne":{"WARRIOR":{"pct":1.579250720461095,"count":137},"PALADIN":{"pct":0.0,"count":0},"HUNTER":{"pct":4.714697406340058,"count":409},"ROGUE":{"pct":1.867435158501441,"count":162},"PRIEST":{"pct":0.0,"count":0},"SHAMAN":{"pct":5.175792507204611,"count":449},"MAGE":{"pct":0.0,"count":0},"WARLOCK":{"pct":0.0,"count":0},"DRUID":{"pct":7.00864553314121,"count":608}}}}}};
+
+const CLASSES = ['WARRIOR','PALADIN','HUNTER','ROGUE','PRIEST','SHAMAN','MAGE','WARLOCK','DRUID'];
+const CLASS_NAME = {WARRIOR:'Warrior',PALADIN:'Paladin',HUNTER:'Hunter',ROGUE:'Rogue',PRIEST:'Priest',SHAMAN:'Shaman',MAGE:'Mage',WARLOCK:'Warlock',DRUID:'Druid'};
+// Blizzard's default class colors (RAID_CLASS_COLORS)
+const CLASS_COLOR = {WARRIOR:'#C79C6E',PALADIN:'#F58CBA',HUNTER:'#ABD473',ROGUE:'#FFF569',PRIEST:'#FFFFFF',SHAMAN:'#0070DE',MAGE:'#69CCF0',WARLOCK:'#9482C9',DRUID:'#FF7D0A'};
+const ALLIANCE_RACES = ['Human','Dwarf','Gnome','Night Elf','High Order Skyborne'];
+const HORDE_RACES = ['Orc','Undead','Troll','Tauren','Windshaper Skyborne'];
+const NS = 'http://www.w3.org/2000/svg';
+
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const p1 = v => v.toFixed(1) + '%';
+const p2 = v => v.toFixed(2) + '%';
+const sgn = v => (v > 0 ? '+' : v < 0 ? '\u2212' : '') + Math.abs(v).toFixed(2);
+
+function darken(hex, f) {
+  f = f || 0.72;
+  const h = hex.replace('#', '');
+  const c = [0, 2, 4].map(i => Math.max(0, Math.floor(parseInt(h.substr(i, 2), 16) * f)));
+  return '#' + c.map(x => x.toString(16).padStart(2, '0')).join('');
+}
+function svg(tag, attrs, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+function niceScale(max) {
+  const step = max <= 6 ? 1 : max <= 12 ? 2 : max <= 30 ? 5 : 10;
+  const top = Math.ceil(max * 1.06 / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= top + 1e-9; v += step) ticks.push(v);
+  return { top, ticks };
+}
+function baseChart(W, H, m, top, ticks, aria) {
+  const s = svg('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': aria });
+  const y = v => m.t + (H - m.t - m.b) * (1 - v / top);
+  ticks.forEach(v => {
+    s.appendChild(svg('line', { class: v === 0 ? 'base' : 'grid', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }));
+    s.appendChild(svg('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end' }, v + '%'));
+  });
+  return { s, y };
+}
+
+/* ---------- tooltip ---------- */
+const tip = document.getElementById('tip');
+let tipText = null;
+function showTip(t, x, y) {
+  if (t !== tipText) {
+    tip.textContent = '';
+    const lines = t.split('\n');
+    const b = document.createElement('strong'); b.textContent = lines[0]; tip.appendChild(b);
+    lines.slice(1).forEach(l => { const d = document.createElement('div'); d.textContent = l; tip.appendChild(d); });
+    tipText = t;
+  }
+  tip.hidden = false;
+  const pad = 14, r = tip.getBoundingClientRect();
+  let left = x + pad, top = y + pad;
+  if (left + r.width > innerWidth - 8) left = x - r.width - pad;
+  if (top + r.height > innerHeight - 8) top = y - r.height - pad;
+  tip.style.left = Math.max(8, left) + 'px';
+  tip.style.top = Math.max(8, top) + 'px';
+}
+function hideTip() { tip.hidden = true; tipText = null; }
+document.addEventListener('mousemove', e => {
+  const t = e.target.closest && e.target.closest('[data-tip]');
+  if (t) showTip(t.getAttribute('data-tip'), e.clientX, e.clientY); else hideTip();
+});
+document.documentElement.addEventListener('mouseleave', hideTip);
+document.addEventListener('scroll', hideTip, true);
+
+/* ---------- table helper ---------- */
+function tableHTML(headers, rows) {
+  return '<table><thead><tr>' + headers.map(h => `<th scope="col">${h}</th>`).join('') + '</tr></thead><tbody>' +
+    rows.map(r => '<tr>' + r.join('') + '</tr>').join('') + '</tbody></table>';
+}
+function clsCell(c) {
+  return `<td class="cls"><span class="swatch" style="background:${CLASS_COLOR[c]}"></span>${CLASS_NAME[c]}</td>`;
+}
+function detailsWrap(summary, inner) {
+  return `<details><summary>${summary}</summary><div class="table-scroll">${inner}</div></details>`;
+}
+
+/* ---------- hero ---------- */
+(function hero() {
+  const G = DATA.groups;
+  const order = ['Alliance-PvE', 'Alliance-PvP', 'Horde-PvE', 'Horde-PvP'];
+  const look = {
+    'Alliance-PvE': ['var(--alliance)', 'light'], 'Alliance-PvP': ['var(--alliance-deep)', 'deep'],
+    'Horde-PvE': ['var(--horde)', 'light'], 'Horde-PvP': ['var(--horde-deep)', 'deep']
+  };
+  const total = order.reduce((a, g) => a + G[g].n, 0);
+  document.getElementById('lede').textContent =
+    `${fmt(DATA.kept)} characters at level 5 and up, gathered from ${DATA.realms.length} beta realms.`;
+  const host = document.getElementById('census');
+  order.forEach(g => {
+    const d = document.createElement('div');
+    d.className = 'seg ' + look[g][1];
+    d.style.background = look[g][0];
+    d.style.flex = G[g].n + ' 1 0';
+    const parts = g.split('-');
+    d.setAttribute('data-tip', `${parts[0]} on ${parts[1]} realms\n${fmt(G[g].n)} characters, ${p1(G[g].n / total * 100)} of the sample`);
+    d.innerHTML = `<strong>${parts[0]}, ${parts[1]}</strong><span>${fmt(G[g].n)} characters</span><span>${p1(G[g].n / total * 100)} of the sample</span>`;
+    host.appendChild(d);
+  });
+})();
+
+/* ---------- grouped bars: two series per class ---------- */
+function legendPair(host, aLabel, bLabel) {
+  const base = '#8b97ad';
+  host.innerHTML =
+    `<span class="item"><span class="swatch" style="background:${base};box-shadow:inset 0 0 0 1.5px #fff"></span>${aLabel} (lighter, outlined)</span>` +
+    `<span class="item"><span class="swatch" style="background:${darken(base)}"></span>${bLabel} (darker)</span>`;
+}
+function groupedChart(hostId, tableId, a, b, aria) {
+  // most series-A-leaning on the left, most series-B-leaning on the right
+  const order = CLASSES.slice().sort((x, y) => (a.g.pct[y] - b.g.pct[y]) - (a.g.pct[x] - b.g.pct[x]));
+  const W = 960, H = 400, m = { l: 48, r: 12, t: 30, b: 38 };
+  const max = Math.max(...CLASSES.map(c => Math.max(a.g.pct[c], b.g.pct[c])));
+  const { top, ticks } = niceScale(max);
+  const { s, y } = baseChart(W, H, m, top, ticks, aria);
+  const gw = (W - m.l - m.r) / order.length, bw = gw * 0.37, gap = 3;
+  order.forEach((c, i) => {
+    const cx = m.l + gw * (i + 0.5);
+    [[a, cx - bw / 2 - gap / 2, false], [b, cx + bw / 2 + gap / 2, true]].forEach(([ser, x, deep]) => {
+      const v = ser.g.pct[c], h = (H - m.t - m.b) * v / top;
+      const r = svg('rect', {
+        class: 'bar', x: x - bw / 2, y: y(v), width: bw, height: h, fill: deep ? darken(CLASS_COLOR[c]) : CLASS_COLOR[c],
+        'data-tip': `${CLASS_NAME[c]}, ${ser.label}\n${p2(v)} of ${fmt(ser.g.n)} characters (${fmt(ser.g.count[c])})`
+      });
+      if (!deep) { r.setAttribute('stroke', '#fff'); r.setAttribute('stroke-width', '1.5'); }
+      s.appendChild(r);
+      s.appendChild(svg('text', { class: 'val', x: x, y: y(v) - 6, 'text-anchor': 'middle' }, p1(v)));
+    });
+    s.appendChild(svg('text', { class: 'cat', x: cx, y: H - 12, 'text-anchor': 'middle' }, CLASS_NAME[c]));
+  });
+  document.getElementById(hostId).appendChild(s);
+
+  const rows = order.map(c => {
+    const d = a.g.pct[c] - b.g.pct[c];
+    return [clsCell(c), `<td>${p2(a.g.pct[c])}</td>`, `<td>${fmt(a.g.count[c])}</td>`, `<td>${p2(b.g.pct[c])}</td>`, `<td>${fmt(b.g.count[c])}</td>`,
+      `<td class="${d > 0 ? 'up' : 'down'}">${sgn(d)}</td>`];
+  });
+  document.getElementById(tableId).innerHTML = detailsWrap('Show the numbers',
+    tableHTML(['Class', `${a.label} %`, `${a.label} count`, `${b.label} %`, `${b.label} count`, 'Difference (points)'], rows));
+  return order;
+}
+function widestGap(a, b, aPhrase, bPhrase) {
+  let best = CLASSES[0], bd = -1;
+  CLASSES.forEach(c => { const d = Math.abs(a.pct[c] - b.pct[c]); if (d > bd) { bd = d; best = c; } });
+  const aHigher = a.pct[best] >= b.pct[best];
+  const hi = aHigher ? a : b, lo = aHigher ? b : a;
+  const hiP = aHigher ? aPhrase : bPhrase, loP = aHigher ? bPhrase : aPhrase;
+  return `${CLASS_NAME[best]} shows the widest gap: ${p1(hi.pct[best])} ${hiP} against ${p1(lo.pct[best])} ${loP}.`;
+}
+
+(function realmVis() {
+  const a = { label: 'PvE realms', g: DATA.realm_vis.pve }, b = { label: 'PvP realms', g: DATA.realm_vis.pvp };
+  legendPair(document.getElementById('realm-legend'), 'PvE realms', 'PvP realms');
+  groupedChart('realm-chart', 'realm-table', a, b,
+    'Grouped bar chart of Alliance class shares, PvE realms versus PvP realms. Exact values are in the table below the chart.');
+  document.getElementById('realm-take').textContent = widestGap(a.g, b.g,
+    'of Alliance characters on PvE realms', 'of Alliance characters on PvP realms');
+})();
+
+(function avhVis() {
+  const a = { label: 'Alliance', g: DATA.avh_vis.alliance }, b = { label: 'Horde', g: DATA.avh_vis.horde };
+  legendPair(document.getElementById('avh-legend'), 'Alliance', 'Horde');
+  groupedChart('avh-chart', 'avh-table', a, b,
+    'Grouped bar chart of class shares on PvE realms, Alliance versus Horde. Exact values are in the table below the chart.');
+  document.getElementById('avh-take').textContent = widestGap(a.g, b.g,
+    'of Alliance characters on PvE realms', 'of Horde characters on PvE realms');
+})();
+
+/* ---------- race x class clusters ---------- */
+function clusterChart(prefix, faction, races) {
+  const C = DATA.clusters[faction];
+  const W = 960, H = 430, m = { l: 48, r: 12, t: 30, b: 42 };
+  let max = 0;
+  races.forEach(r => CLASSES.forEach(c => { max = Math.max(max, C.races[r][c].pct); }));
+  const { top, ticks } = niceScale(max);
+  const { s, y } = baseChart(W, H, m, top, ticks,
+    `Clustered bar chart of ${faction} race and class shares. Exact values are in the table below the chart.`);
+  const cw = (W - m.l - m.r) / races.length, bw = 22, step = 24;
+  races.forEach((race, i) => {
+    const present = CLASSES.filter(c => C.races[race][c].pct > 0);
+    const total = present.length * step - (step - bw);
+    const start = m.l + cw * (i + 0.5) - total / 2;
+    present.forEach((c, k) => {
+      const d = C.races[race][c], x = start + k * step, h = (H - m.t - m.b) * d.pct / top;
+      s.appendChild(svg('rect', {
+        class: 'bar', 'data-cls': c, x: x, y: y(d.pct), width: bw, height: h, fill: CLASS_COLOR[c],
+        'data-tip': `${race} ${CLASS_NAME[c]}\n${p2(d.pct)} of ${fmt(C.n)} ${faction} characters (${fmt(d.count)})`
+      }));
+      s.appendChild(svg('text', { class: 'val', 'data-cls': c, x: x + bw / 2, y: y(d.pct) - 5, 'text-anchor': 'middle' }, d.pct.toFixed(1)));
+    });
+    s.appendChild(svg('text', { class: 'cat', x: m.l + cw * (i + 0.5), y: H - 14, 'text-anchor': 'middle' }, race));
+  });
+  document.getElementById(prefix + '-chart').appendChild(s);
+
+  // legend doubles as a highlighter
+  const lg = document.getElementById(prefix + '-legend');
+  CLASSES.forEach(c => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'item';
+    b.innerHTML = `<span class="swatch" style="background:${CLASS_COLOR[c]}"></span>${CLASS_NAME[c]}`;
+    const on = () => s.querySelectorAll('[data-cls]').forEach(n => n.classList.toggle('dim', n.getAttribute('data-cls') !== c));
+    const off = () => s.querySelectorAll('.dim').forEach(n => n.classList.remove('dim'));
+    b.addEventListener('mouseenter', on); b.addEventListener('mouseleave', off);
+    b.addEventListener('focus', on); b.addEventListener('blur', off);
+    lg.appendChild(b);
+  });
+
+  // takeaway
+  let best = null;
+  races.forEach(r => CLASSES.forEach(c => { const d = C.races[r][c]; if (!best || d.pct > best.pct) best = { r, c, pct: d.pct }; }));
+  const raceTotals = races.map(r => ({ r, t: CLASSES.reduce((a, c) => a + C.races[r][c].pct, 0) })).sort((a, b) => b.t - a.t);
+  document.getElementById(prefix + '-take').textContent =
+    `${best.r} ${CLASS_NAME[best.c]} is the largest single pairing at ${p1(best.pct)}, and ${raceTotals[0].r} is the biggest race at ${p1(raceTotals[0].t)} of the faction.`;
+
+  const rows = races.map(r => {
+    const tot = CLASSES.reduce((a, c) => a + C.races[r][c].pct, 0);
+    return [`<td>${r}</td>`].concat(CLASSES.map(c => { const v = C.races[r][c].pct; return `<td>${v > 0 ? p2(v) : '\u2013'}</td>`; }))
+      .concat([`<td><strong>${p2(tot)}</strong></td>`]);
+  });
+  document.getElementById(prefix + '-table').innerHTML = detailsWrap('Show the numbers',
+    tableHTML(['Race'].concat(CLASSES.map(c => CLASS_NAME[c])).concat(['Race total']), rows));
+}
+clusterChart('ally', 'Alliance', ALLIANCE_RACES);
+clusterChart('horde', 'Horde', HORDE_RACES);
+
+/* ---------- group table + ratio tables ---------- */
+(function groupTables() {
+  const G = DATA.groups, names = ['Alliance-PvE', 'Alliance-PvP', 'Horde-PvE', 'Horde-PvP'];
+  const maxes = names.map(g => Math.max(...CLASSES.map(c => G[g].pct[c])));
+  const rows = CLASSES.slice().sort((x, y) => CLASS_NAME[x].localeCompare(CLASS_NAME[y])).map(c =>
+    [clsCell(c)].concat(names.map((g, i) => `<td class="${G[g].pct[c] === maxes[i] ? 'max' : ''}">${p2(G[g].pct[c])}</td>`)));
+  document.getElementById('group-table').innerHTML =
+    tableHTML(['Class'].concat(names.map(g => g.replace('-', ', ') + ` (${fmt(G[g].n)})`)), rows);
+
+  const host = document.getElementById('ratio-grid');
+  names.forEach(g => {
+    const R = DATA.ratios[g];
+    const list = CLASSES.slice().sort((x, y) => R[y].ratio - R[x].ratio);
+    const rows = list.map(c => [clsCell(c), `<td>${p2(R[c].here)}</td>`, `<td>${p2(R[c].avg)}</td>`,
+      `<td class="${R[c].ratio >= 1 ? 'up' : 'down'}">${R[c].ratio.toFixed(2)}x</td>`]);
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `<h3>${g.replace('-', ', ')}</h3>` +
+      `<div class="table-scroll">${tableHTML(['Class', 'This group', 'Elsewhere avg', 'Ratio'], rows)}</div>`;
+    host.appendChild(wrap);
+  });
+})();
+
+/* ---------- footer ---------- */
+document.getElementById('foot-method').textContent =
+  `Of ${fmt(DATA.total_entries)} characters recorded, ${fmt(DATA.no_level)} have no recorded level and ${fmt(DATA.low_level)} are below level 5; both are left out. ` +
+  `Faction follows race (Human, Dwarf, Gnome, Night Elf and High Order Skyborne are Alliance; Orc, Undead, Troll, Tauren and Windshaper Skyborne are Horde). ` +
+  `A realm counts as PvE or PvP by whether its name contains those letters.`;
+document.getElementById('foot-gen').textContent = `Built ${DATA.generated} from Roster Tracker scans.`;
+</script>
+</body>
+</html>
